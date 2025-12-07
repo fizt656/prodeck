@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, Play, Download, Loader2, Image as ImageIcon, X } from 'lucide-react';
+import { Upload, Play, Download, Loader2, Image as ImageIcon, X, Edit2 } from 'lucide-react';
 import { geminiService } from '../services/gemini';
 import { exportPresentation } from '../utils/pptxExport';
 
@@ -29,6 +29,48 @@ export const DeckBuilder: React.FC = () => {
 
     const removeImage = (index: number) => {
         setRefImages(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const [editingSlide, setEditingSlide] = useState<number | null>(null);
+    const [editInstruction, setEditInstruction] = useState('');
+
+    const handleEditStart = (slideNumber: number) => {
+        setEditingSlide(slideNumber);
+        setEditInstruction('');
+    };
+
+    const handleEditCancel = () => {
+        setEditingSlide(null);
+        setEditInstruction('');
+    };
+
+    const handleEditSubmit = async (slideNumber: number) => {
+        if (!editInstruction.trim()) return;
+
+        const slideIndex = slides.findIndex(s => s.slideNumber === slideNumber);
+        if (slideIndex === -1) return;
+
+        const currentSlide = slides[slideIndex];
+        if (!currentSlide.imageData) return;
+
+        // Update status to generating
+        setSlides(prev => prev.map(s =>
+            s.slideNumber === slideNumber ? { ...s, status: 'generating' } : s
+        ));
+        setEditingSlide(null);
+
+        try {
+            const newImageData = await geminiService.editSlide(currentSlide.imageData, editInstruction);
+
+            setSlides(prev => prev.map(s =>
+                s.slideNumber === slideNumber ? { ...s, imageData: newImageData, status: 'done' } : s
+            ));
+        } catch (error) {
+            console.error("Edit failed", error);
+            setSlides(prev => prev.map(s =>
+                s.slideNumber === slideNumber ? { ...s, status: 'error' } : s
+            ));
+        }
     };
 
     const startGeneration = async () => {
@@ -155,7 +197,7 @@ export const DeckBuilder: React.FC = () => {
                                 </div>
                                 <button
                                     onClick={startGeneration}
-                                    disabled={!context || refImages.length === 0}
+                                    disabled={!context || refImages.length === 0 || currentStep === 'planning' || currentStep === 'generating'}
                                     className="bg-black text-white px-8 py-4 rounded-full font-medium text-lg hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 shadow-lg flex items-center gap-2"
                                 >
                                     <Play size={20} fill="currentColor" />
@@ -205,7 +247,15 @@ export const DeckBuilder: React.FC = () => {
                                     className="aspect-video bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden relative group"
                                 >
                                     {slide.imageData ? (
-                                        <img src={slide.imageData} alt={slide.title} className="w-full h-full object-cover" />
+                                        <>
+                                            <img src={slide.imageData} alt={slide.title} className="w-full h-full object-cover" />
+                                            {slide.status === 'generating' && (
+                                                <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center backdrop-blur-sm z-10 transition-all duration-300">
+                                                    <Loader2 size={32} className="animate-spin text-white mb-2" />
+                                                    <span className="text-white text-sm font-medium">Regenerating...</span>
+                                                </div>
+                                            )}
+                                        </>
                                     ) : (
                                         <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 text-gray-400 p-4 text-center">
                                             {slide.status === 'generating' ? (
@@ -223,9 +273,48 @@ export const DeckBuilder: React.FC = () => {
                                             </span>
                                         </div>
                                     )}
-                                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-4 opacity-0 group-hover:opacity-100 transition-opacity flex justify-between items-end">
                                         <p className="text-white text-sm font-medium">{slide.title}</p>
+
+                                        {slide.status === 'done' && (
+                                            <button
+                                                onClick={() => handleEditStart(slide.slideNumber)}
+                                                className="bg-white/20 hover:bg-white/40 backdrop-blur-md text-white p-2 rounded-lg transition-colors"
+                                            >
+                                                <Edit2 size={16} />
+                                            </button>
+                                        )}
                                     </div>
+
+                                    {/* Edit Overlay */}
+                                    {editingSlide === slide.slideNumber && (
+                                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-10">
+                                            <div className="bg-white rounded-xl p-4 w-full shadow-2xl space-y-3">
+                                                <h3 className="text-sm font-semibold text-gray-900">Edit Slide</h3>
+                                                <textarea
+                                                    value={editInstruction}
+                                                    onChange={(e) => setEditInstruction(e.target.value)}
+                                                    placeholder="e.g. 'Make the background darker' or 'Change text to...'"
+                                                    className="w-full text-sm border border-gray-200 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none resize-none h-20"
+                                                    autoFocus
+                                                />
+                                                <div className="flex justify-end gap-2">
+                                                    <button
+                                                        onClick={handleEditCancel}
+                                                        className="text-xs px-3 py-1.5 text-gray-500 font-medium hover:text-gray-700"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleEditSubmit(slide.slideNumber)}
+                                                        className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
+                                                    >
+                                                        Update
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </motion.div>
                             ))}
                         </div>

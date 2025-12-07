@@ -106,7 +106,12 @@ export class GeminiService {
 
             const finalPrompt = `${visualPrompt} \n\nEnsure the generated image has a 16:9 aspect ratio.`;
 
-            const result = await this.imageModel.generateContent({
+            // Create a timeout promise
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("Request timed out")), 45000)
+            );
+
+            const generationPromise = this.imageModel.generateContent({
                 contents: [
                     { role: 'user', parts: [{ text: finalPrompt }, ...imageParts] }
                 ],
@@ -114,6 +119,8 @@ export class GeminiService {
                     responseModalities: ["IMAGE"],
                 }
             });
+
+            const result: any = await Promise.race([generationPromise, timeoutPromise]);
 
             const response = await result.response;
 
@@ -133,6 +140,62 @@ export class GeminiService {
         } catch (error: any) {
             console.error("Error generating slide:", error);
             // Log full details for debugging
+            if (error.response) {
+                console.error("API Response Error:", await error.response.text());
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Edits a slide image based on user instruction.
+     */
+    async editSlide(currentImage: string, instruction: string): Promise<string> {
+        try {
+            // Remove data:image/xxx;base64, prefix if present
+            const base64Data = currentImage.split(',')[1] || currentImage;
+
+            const imagePart = {
+                inlineData: {
+                    data: base64Data,
+                    mimeType: "image/png", // Assuming PNG for now
+                },
+            };
+
+            const prompt = `Edit this image. Instruction: ${instruction}. 
+            Maintain the exact same aspect ratio (16:9) and overall style. 
+            Do not change parts of the image unrelated to the instruction.`;
+
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("Request timed out")), 45000)
+            );
+
+            const generationPromise = this.imageModel.generateContent({
+                contents: [
+                    { role: 'user', parts: [{ text: prompt }, imagePart] }
+                ],
+                generationConfig: {
+                    responseModalities: ["IMAGE"],
+                }
+            });
+
+            const result: any = await Promise.race([generationPromise, timeoutPromise]);
+
+            const response = await result.response;
+
+            const parts = response.candidates?.[0]?.content?.parts;
+            if (parts) {
+                for (const part of parts) {
+                    if (part.inlineData) {
+                        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                    }
+                }
+            }
+
+            throw new Error("No image generated from edit");
+
+        } catch (error: any) {
+            console.error("Error editing slide:", error);
             if (error.response) {
                 console.error("API Response Error:", await error.response.text());
             }
