@@ -47,7 +47,7 @@ export class GeminiService {
     /**
      * Plans the deck structure based on user context and reference images.
      */
-    async planDeck(context: string, referenceImages: File[]): Promise<any[]> {
+    async planDeck(context: string, referenceImages: File[], slideCount: number = 6): Promise<any[]> {
         try {
             const imageParts = await Promise.all(
                 referenceImages.map(async (file) => ({
@@ -64,7 +64,7 @@ export class GeminiService {
         
         Analyze the provided reference images for design style, colors, and branding.
         
-        Output a JSON list of slides. 
+        Output a JSON list of EXACTLY ${slideCount} slides. 
         For each slide, write a 'visualPrompt' that is extremely detailed. 
         This 'visualPrompt' will be sent to an image generation model to create the FINAL SLIDE as a single image.
         

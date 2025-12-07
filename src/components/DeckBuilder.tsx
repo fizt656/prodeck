@@ -16,6 +16,7 @@ export const DeckBuilder: React.FC = () => {
     const [context, setContext] = useState('');
     const [refImages, setRefImages] = useState<File[]>([]);
     const [slides, setSlides] = useState<Slide[]>([]);
+    const [slideCount, setSlideCount] = useState<number>(6);
     const [currentStep, setCurrentStep] = useState<'input' | 'planning' | 'generating' | 'preview'>('input');
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -40,7 +41,7 @@ export const DeckBuilder: React.FC = () => {
 
         try {
             // 1. Plan Structure
-            const plannedSlides = await geminiService.planDeck(context, refImages);
+            const plannedSlides = await geminiService.planDeck(context, refImages, slideCount);
 
             const initialSlides = plannedSlides.map((s: any) => ({
                 ...s,
@@ -139,6 +140,19 @@ export const DeckBuilder: React.FC = () => {
                                     ))}
                                 </div>
 
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-medium text-gray-500">
+                                        Length: <span className="text-gray-900">{slideCount} slides</span>
+                                    </label>
+                                    <input
+                                        type="range"
+                                        min="3"
+                                        max="20"
+                                        value={slideCount}
+                                        onChange={(e) => setSlideCount(Number(e.target.value))}
+                                        className="accent-black h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer w-32"
+                                    />
+                                </div>
                                 <button
                                     onClick={startGeneration}
                                     disabled={!context || refImages.length === 0}
