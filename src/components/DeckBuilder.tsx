@@ -15,11 +15,13 @@ interface Slide {
 export const DeckBuilder: React.FC = () => {
     const [context, setContext] = useState('');
     const [refImages, setRefImages] = useState<File[]>([]);
+    const [contextFiles, setContextFiles] = useState<File[]>([]);
     const [slides, setSlides] = useState<Slide[]>([]);
     const [slideCount, setSlideCount] = useState<number>(6);
     const [currentStep, setCurrentStep] = useState<'input' | 'planning' | 'generating' | 'preview'>('input');
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const contextInputRef = useRef<HTMLInputElement>(null);
 
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
@@ -27,8 +29,18 @@ export const DeckBuilder: React.FC = () => {
         }
     };
 
+    const handleContextUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files) {
+            setContextFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+        }
+    };
+
     const removeImage = (index: number) => {
         setRefImages(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const removeContextFile = (index: number) => {
+        setContextFiles(prev => prev.filter((_, i) => i !== index));
     };
 
     const [editingSlide, setEditingSlide] = useState<number | null>(null);
@@ -83,7 +95,7 @@ export const DeckBuilder: React.FC = () => {
 
         try {
             // 1. Plan Structure
-            const plannedSlides = await geminiService.planDeck(context, refImages, slideCount);
+            const plannedSlides = await geminiService.planDeck(context, refImages, contextFiles, slideCount);
 
             const initialSlides = plannedSlides.map((s: any) => ({
                 ...s,
@@ -137,7 +149,7 @@ export const DeckBuilder: React.FC = () => {
                     >
                         <div className="text-center space-y-2">
                             <h1 className="text-4xl font-semibold tracking-tight text-gray-900">Create your deck.</h1>
-                            <p className="text-gray-500 text-lg">Tell us the story. We'll handle the rest.</p>
+                            <p className="text-gray-500 text-lg">Upload docs for content. Upload images for style.</p>
                         </div>
 
                         <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-8 shadow-sm border border-white/20 ring-1 ring-black/5">
@@ -150,12 +162,13 @@ export const DeckBuilder: React.FC = () => {
 
                             <div className="mt-8 pt-8 border-t border-gray-100 flex items-center justify-between">
                                 <div className="flex gap-4 overflow-x-auto pb-2">
+                                    {/* Visual Refs Input */}
                                     <div
                                         onClick={() => fileInputRef.current?.click()}
                                         className="w-24 h-24 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 cursor-pointer hover:border-blue-500 hover:text-blue-500 transition-colors"
                                     >
-                                        <Upload size={20} />
-                                        <span className="text-xs mt-2 font-medium">Add Refs</span>
+                                        <ImageIcon size={20} />
+                                        <span className="text-[10px] mt-2 font-medium uppercase tracking-wide">Style Refs</span>
                                     </div>
                                     <input
                                         type="file"
@@ -180,6 +193,38 @@ export const DeckBuilder: React.FC = () => {
                                             </button>
                                         </div>
                                     ))}
+
+                                    {/* Vertical Separator */}
+                                    <div className="w-px h-16 bg-gray-200 mx-2" />
+
+                                    {/* Context Docs Input */}
+                                    <div
+                                        onClick={() => contextInputRef.current?.click()}
+                                        className="w-24 h-24 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 cursor-pointer hover:border-emerald-500 hover:text-emerald-500 transition-colors"
+                                    >
+                                        <Upload size={20} />
+                                        <span className="text-[10px] mt-2 font-medium uppercase tracking-wide">Context Docs</span>
+                                    </div>
+                                    <input
+                                        type="file"
+                                        multiple
+                                        ref={contextInputRef}
+                                        className="hidden"
+                                        accept=".pdf,.txt,.md,.csv"
+                                        onChange={handleContextUpload}
+                                    />
+                                    {contextFiles.map((file, i) => (
+                                        <div key={i} className="relative group w-24 h-24 flex-shrink-0 bg-emerald-50 rounded-2xl border border-emerald-100 flex flex-col items-center justify-center text-center p-2">
+                                            <span className="text-[10px] uppercase font-bold text-emerald-600 mb-1 truncate w-full">{file.name.split('.').pop()}</span>
+                                            <span className="text-[10px] text-gray-600 leading-tight line-clamp-2 break-all">{file.name}</span>
+                                            <button
+                                                onClick={() => removeContextFile(i)}
+                                                className="absolute -top-2 -right-2 bg-white rounded-full p-1 shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                <X size={12} className="text-red-500" />
+                                            </button>
+                                        </div>
+                                    ))}
                                 </div>
 
                                 <div className="flex flex-col gap-2">
@@ -197,7 +242,7 @@ export const DeckBuilder: React.FC = () => {
                                 </div>
                                 <button
                                     onClick={startGeneration}
-                                    disabled={!context || refImages.length === 0 || currentStep === 'planning' || currentStep === 'generating'}
+                                    disabled={!context || refImages.length === 0}
                                     className="bg-black text-white px-8 py-4 rounded-full font-medium text-lg hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 shadow-lg flex items-center gap-2"
                                 >
                                     <Play size={20} fill="currentColor" />

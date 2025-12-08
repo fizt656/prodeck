@@ -23,5 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# Prompts
+# Custom Stuff
 prodeckprompts.md
+inspo

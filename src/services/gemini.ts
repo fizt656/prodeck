@@ -45,10 +45,11 @@ export class GeminiService {
     }
 
     /**
-     * Plans the deck structure based on user context and reference images.
+     * Plans the deck structure based on user context, reference images, and context files (PDF/Text).
      */
-    async planDeck(context: string, referenceImages: File[], slideCount: number = 6): Promise<any[]> {
+    async planDeck(context: string, referenceImages: File[], contextFiles: File[] = [], slideCount: number = 6): Promise<any[]> {
         try {
+            // Process Reference Images (Style)
             const imageParts = await Promise.all(
                 referenceImages.map(async (file) => ({
                     inlineData: {
@@ -58,24 +59,32 @@ export class GeminiService {
                 }))
             );
 
+            // Process Context Files (Content)
+            const contextParts = await Promise.all(
+                contextFiles.map(async (file) => await this.fileToGenerativePart(file))
+            );
+
             const prompt = `
         You are an expert Presentation Designer.
         Plan a professional slide deck about: "${context}".
         
-        Analyze the provided reference images for design style, colors, and branding.
+        INPUTS:
+        1. Reference Images: Use these for design style, colors, layout, and branding ONLY.
+        2. Context Files: Use these documents (PDFs, text) as the SOURCE TRUTH for the content, data, and details of the presentation.
         
+        TASK:
         Output a JSON list of EXACTLY ${slideCount} slides. 
         For each slide, write a 'visualPrompt' that is extremely detailed. 
         This 'visualPrompt' will be sent to an image generation model to create the FINAL SLIDE as a single image.
         
         The 'visualPrompt' MUST include:
-        1. The exact text to appear on the slide (Headings, bullets, body).
+        1. The exact text to appear on the slide (Headings, bullets, body) derived from the Context Files where applicable.
         2. The layout description (e.g., "Split screen", "Centered title").
-        3. Stylistic commonalities from the reference images (hex codes, logo placement).
+        3. Stylistic commonalities from the Reference Images (hex codes, logo placement).
         4. Aspect ratio instruction: "Compose for 16:9".
       `;
 
-            const result = await this.plannerModel.generateContent([prompt, ...imageParts]);
+            const result = await this.plannerModel.generateContent([prompt, ...imageParts, ...contextParts]);
             const response = await result.response;
             return JSON.parse(response.text());
         } catch (error) {
@@ -215,6 +224,26 @@ export class GeminiService {
             reader.onerror = reject;
             reader.readAsDataURL(file);
         });
+    }
+
+    private async fileToGenerativePart(file: File): Promise<any> {
+        // Handle Text Files (txt, md, csv, html)
+        if (file.type.startsWith('text/') || file.name.endsWith('.md') || file.name.endsWith('.csv')) {
+            const text = await file.text();
+            return {
+                text: `[FILE: ${file.name}]\n${text}\n[END FILE]`
+            };
+        }
+        // Handle PDF and Images
+        else {
+            const base64Data = await this.fileToBase64(file);
+            return {
+                inlineData: {
+                    data: base64Data,
+                    mimeType: file.type
+                }
+            };
+        }
     }
 }
 
