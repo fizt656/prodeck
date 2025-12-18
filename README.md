@@ -1,69 +1,52 @@
 # ProDeck
 
-**ProDeck** is a premium, AI-powered presentation generator that transforms simple text prompts and reference images into professional, visually stunning slide decks.
+AI-powered slide deck generator. Drop in some reference images, describe what you want, and get back polished presentation slides, designed according to your reference materials. This also includes structurring the narrative of the presentation based on your prompt -- your prompt can be simple (system will take more creative license), or very complex/structured (system will follow your instructions re: slide-by-slide layout, text displayed, etc).
 
-Built with a focus on high-fidelity design, ProDeck leverages Google's latest **Gemini 3** models to understand your aesthetic preferences and generate ready-to-present slides.
+Uses Gemini 3 for planning + image generation, with optional OpenAI support.
 
-## ✨ Key Features
+## What it does
 
-- **🧠 Intelligent Planning**: Uses `gemini-3-flash-preview` to analyze your prompt and reference images, structuring a cohesive narrative and slide flow.
-- **🎨 Style Transfer**: Upload your own reference images (logos, mood boards, existing decks), and ProDeck will mimic the style, color palette, and vibe.
-- **🖼️ High-Fidelity Generation**: Generates full 16:9 slide images using `gemini-3-pro-image-preview`, ensuring complex layouts and embedded typography that standard HTML-to-PPT converters can't match.
-- **💾 Native PowerPoint Export**: Exports directly to `.pptx` format, with each slide rendered as a high-quality background for instant playback.
-- **💎 Premium UI**: A sleek, Apple-inspired interface built with Tailwind CSS and Framer Motion.
+- Takes your prompt + reference images and plans out a full deck structure
+- Generates each slide as a 16:9 image (not HTML, actual rendered slides)
+- Mimics the style/colors and 'brand kit' from your reference images
+- Exports to `.pptx` (not editable, but works smoothly in PowerPoint, images are high resolution).
 
-## 🛠️ Technology Stack
+## Stack
 
-- **Frontend**: React (TypeScript) + Vite
-- **Styling**: Tailwind CSS v4 + Framer Motion
-- **AI**: Google Generative AI SDK (`gemini-3-flash-preview`, `gemini-3-pro-image-preview`)
-- **Export**: PptxGenJS
+- React + TypeScript + Vite
+- Tailwind v4 + Framer Motion
+- Gemini 3 (planning + images) / OpenAI gpt-image-1.5 (optional)
+- PptxGenJS for export
 
-## 🚀 Getting Started
+## Setup
 
-### Prerequisites
+Need Node 18+, a Gemini API key, and optionally an OpenAI key.
 
-- Node.js (v18 or higher)
-- Comparison text editor (VS Code recommended)
-- **Google Gemini API Key**
-- **OpenAI API Key**
+```bash
+git clone https://github.com/your-username/prodeck.git
+cd prodeck
+npm install
+```
 
-### Installation
+Create `.env.local`:
 
-1. **Clone the repository**
+```bash
+VITE_GOOGLE_API_KEY=your_key
+VITE_OPENAI_API_KEY=your_key  # optional
+```
 
-    ```bash
-    git clone https://github.com/your-username/prodeck.git
-    cd prodeck
-    ```
+Run it:
 
-2. **Install dependencies**
+```bash
+npm run dev
+```
 
-    ```bash
-    npm install
-    ```
+Then hit `http://localhost:5173`
 
-3. **Configure Environment**
-    Create a `.env.local` file in the root directory and add your API keys:
+## How to use
 
-    ```bash
-    VITE_GOOGLE_API_KEY=your_google_api_key_here
-    VITE_OPENAI_API_KEY=your_openai_api_key_here  # Optional, for OpenAI image generation
-    ```
-
-4. **Run Development Server**
-
-    ```bash
-    npm run dev
-    ```
-
-5. Open [http://localhost:5173](http://localhost:5173) in your browser.
-
-## 📖 Usage
-
-1. **Describe your Deck**: Enter a prompt describing the topic, audience, and goal of your presentation (e.g., "A pitch deck for a new coffee brand focusing on sustainability").
-2. **Add References**: Upload 1 or more images to define the visual style. This could be your logo, a screenshot of your website, or a slide you like.
-3. **Generate**: Click "Generate Deck". The AI will first plan the structure and then generate each slide image.
-4. **Export**: Once finished, preview the slides and click "Export PPTX" to download your file.
-
----
+1. Write what you want the deck to be about (as detailed or as simple as you want)
+2. Upload style reference images (logos, mood boards, slide template screenshots, whatever)
+3. Choose the image model you want to use (so far, looks like OpenAI is maybe higher quality, but significantly slower)
+4. Hit Generate
+5. Export to pptx when done
