@@ -47,6 +47,6 @@ Then hit `http://localhost:5173`
 
 1. Write what you want the deck to be about (as detailed or as simple as you want)
 2. Upload style reference images (logos, mood boards, slide template screenshots, whatever)
-3. Choose the image model you want to use (so far, looks like OpenAI is maybe higher quality, but significantly slower)
+3. Choose the image model you want to use (make sure your api key is set)
 4. Hit Generate
 5. Export to pptx when done
