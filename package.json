@@ -12,7 +12,9 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@tailwindcss/vite": "^4.1.17",
+    "@types/jszip": "^3.4.0",
     "framer-motion": "^12.23.25",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.556.0",
     "pptxgenjs": "^4.0.1",
     "react": "^19.2.0",

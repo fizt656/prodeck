@@ -32,7 +32,7 @@ export class GeminiService {
 
     constructor() {
         this.plannerModel = genAI.getGenerativeModel({
-            model: "gemini-3-pro-preview", // Planning model
+            model: "gemini-3-flash-preview", // Planning model
             generationConfig: {
                 responseMimeType: "application/json",
                 responseSchema: deckSchema,

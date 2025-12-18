@@ -1,8 +1,10 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, Play, Download, Loader2, Image as ImageIcon, X, Edit2 } from 'lucide-react';
+import { Upload, Play, Download, Loader2, Image as ImageIcon, X, Edit2, FileUp } from 'lucide-react';
 import { geminiService } from '../services/gemini';
+import { imageService, type ImageModel } from '../services/imageService';
 import { exportPresentation } from '../utils/pptxExport';
+import JSZip from 'jszip';
 
 interface Slide {
     slideNumber: number;
@@ -19,9 +21,12 @@ export const DeckBuilder: React.FC = () => {
     const [slides, setSlides] = useState<Slide[]>([]);
     const [slideCount, setSlideCount] = useState<number>(6);
     const [currentStep, setCurrentStep] = useState<'input' | 'planning' | 'generating' | 'preview'>('input');
+    const [isImporting, setIsImporting] = useState(false);
+    const [imageModel, setImageModel] = useState<ImageModel>('gemini');
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const contextInputRef = useRef<HTMLInputElement>(null);
+    const pptInputRef = useRef<HTMLInputElement>(null);
 
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
@@ -32,6 +37,98 @@ export const DeckBuilder: React.FC = () => {
     const handleContextUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
             setContextFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+        }
+    };
+
+    const handlePPTUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsImporting(true);
+        try {
+            const zip = await JSZip.loadAsync(file);
+            const newSlides: Slide[] = [];
+
+            // 1. Identify slides from ppt/presentation.xml or just by scanning ppt/slides/slide*.xml
+            // A safer heuristic for generated decks is sorting slideN.xml files
+            const slideFiles = Object.keys(zip.files).filter(path =>
+                path.match(/^ppt\/slides\/slide\d+\.xml$/)
+            ).sort((a, b) => {
+                const numA = parseInt(a.match(/slide(\d+)\.xml/)![1]);
+                const numB = parseInt(b.match(/slide(\d+)\.xml/)![1]);
+                return numA - numB;
+            });
+
+            for (const slidePath of slideFiles) {
+                const slideNum = parseInt(slidePath.match(/slide(\d+)\.xml/)![1]);
+
+                // 2. Find relationships for this slide
+                // Rel path is ppt/slides/_rels/slideX.xml.rels
+                const relPath = slidePath.replace('ppt/slides/', 'ppt/slides/_rels/') + '.rels';
+                const relFile = zip.file(relPath);
+
+                if (relFile) {
+                    const relXmlText = await relFile.async('text');
+                    const parser = new DOMParser();
+                    const relDoc = parser.parseFromString(relXmlText, "text/xml");
+
+                    // Find image relationship
+                    // Look for Type=".../image"
+                    const relationships = relDoc.getElementsByTagName('Relationship');
+                    let targetPath = '';
+
+                    for (let i = 0; i < relationships.length; i++) {
+                        const rel = relationships[i];
+                        if (rel.getAttribute('Type')?.includes('/image')) {
+                            targetPath = rel.getAttribute('Target') || '';
+                            break;
+                        }
+                    }
+
+                    if (targetPath) {
+                        // Resolve target path (usually relative to slide, e.g. "../media/image1.png")
+                        // If it starts with .., resolve it. ppt/slides/ + ../media -> ppt/media
+                        let fullPath = '';
+                        if (targetPath.startsWith('../')) {
+                            fullPath = 'ppt/' + targetPath.replace('../', '');
+                        } else {
+                            fullPath = 'ppt/slides/' + targetPath;
+                        }
+
+                        // 3. Extract image
+                        const imgFile = zip.file(fullPath);
+                        if (imgFile) {
+                            const imgBase64 = await imgFile.async('base64');
+                            const imgExt = fullPath.split('.').pop() || 'png';
+                            // Infer MIME type
+                            const mime = imgExt === 'jpg' || imgExt === 'jpeg' ? 'image/jpeg' : 'image/png';
+
+                            newSlides.push({
+                                slideNumber: slideNum,
+                                title: `Imported Slide ${slideNum}`,
+                                visualPrompt: "Imported slide content", // Placeholder
+                                status: 'done',
+                                imageData: `data:${mime};base64,${imgBase64}`
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (newSlides.length > 0) {
+                setSlides(newSlides);
+                // Try to infer context from filename if empty? No, keep it simple.
+                setCurrentStep('preview');
+            } else {
+                alert("No slides/images found in this PPTX.");
+            }
+
+        } catch (error) {
+            console.error("Failed to parse PPTX", error);
+            alert("Failed to load PPTX. Ensure it is a valid PowerPoint file.");
+        } finally {
+            setIsImporting(false);
+            if (pptInputRef.current) pptInputRef.current.value = '';
         }
     };
 
@@ -72,7 +169,7 @@ export const DeckBuilder: React.FC = () => {
         setEditingSlide(null);
 
         try {
-            const newImageData = await geminiService.editSlide(currentSlide.imageData, editInstruction);
+            const newImageData = await imageService.editSlide(currentSlide.imageData, editInstruction, imageModel);
 
             setSlides(prev => prev.map(s =>
                 s.slideNumber === slideNumber ? { ...s, imageData: newImageData, status: 'done' } : s
@@ -112,7 +209,7 @@ export const DeckBuilder: React.FC = () => {
                 ));
 
                 try {
-                    const imageData = await geminiService.generateSlide(initialSlides[i].visualPrompt, refImages);
+                    const imageData = await imageService.generateSlide(initialSlides[i].visualPrompt, refImages, imageModel);
 
                     setSlides(prev => prev.map((slide, idx) =>
                         idx === i ? { ...slide, imageData, status: 'done' } : slide
@@ -240,14 +337,60 @@ export const DeckBuilder: React.FC = () => {
                                         className="accent-black h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer w-32"
                                     />
                                 </div>
-                                <button
-                                    onClick={startGeneration}
-                                    disabled={!context || refImages.length === 0}
-                                    className="bg-black text-white px-8 py-4 rounded-full font-medium text-lg hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 shadow-lg flex items-center gap-2"
-                                >
-                                    <Play size={20} fill="currentColor" />
-                                    Generate Deck
-                                </button>
+
+                                {/* Image Model Toggle */}
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-sm font-medium text-gray-500">Image Model</label>
+                                    <div className="flex bg-gray-100 rounded-lg p-1">
+                                        <button
+                                            onClick={() => setImageModel('gemini')}
+                                            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${imageModel === 'gemini'
+                                                    ? 'bg-white text-gray-900 shadow-sm'
+                                                    : 'text-gray-500 hover:text-gray-700'
+                                                }`}
+                                        >
+                                            Gemini 3
+                                        </button>
+                                        <button
+                                            onClick={() => setImageModel('openai')}
+                                            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${imageModel === 'openai'
+                                                    ? 'bg-white text-gray-900 shadow-sm'
+                                                    : 'text-gray-500 hover:text-gray-700'
+                                                }`}
+                                        >
+                                            OpenAI
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col gap-2 items-end">
+                                    <button
+                                        onClick={startGeneration}
+                                        disabled={!context || refImages.length === 0}
+                                        className="bg-black text-white px-8 py-4 rounded-full font-medium text-lg hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 shadow-lg flex items-center gap-2"
+                                    >
+                                        <Play size={20} fill="currentColor" />
+                                        Generate Deck
+                                    </button>
+
+                                    {/* Import PPTX Button */}
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="file"
+                                            ref={pptInputRef}
+                                            className="hidden"
+                                            accept=".pptx"
+                                            onChange={handlePPTUpload}
+                                        />
+                                        <button
+                                            onClick={() => pptInputRef.current?.click()}
+                                            disabled={isImporting}
+                                            className="text-xs text-gray-500 hover:text-black flex items-center gap-1 transition-colors disabled:opacity-50"
+                                        >
+                                            {isImporting ? <Loader2 size={12} className="animate-spin" /> : <FileUp size={12} />}
+                                            Import Existing .pptx
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </motion.div>
@@ -273,15 +416,26 @@ export const DeckBuilder: React.FC = () => {
                     >
                         <div className="flex items-center justify-between">
                             <h2 className="text-2xl font-semibold text-gray-900">Your Deck</h2>
-                            {currentStep === 'preview' && (
+                            <div className="flex gap-2">
                                 <button
-                                    onClick={handleExport}
-                                    className="bg-blue-600 text-white px-6 py-2 rounded-full font-medium hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm"
+                                    onClick={() => {
+                                        setSlides([]);
+                                        setCurrentStep('input');
+                                    }}
+                                    className="px-4 py-2 text-gray-500 font-medium hover:text-black transition-colors"
                                 >
-                                    <Download size={18} />
-                                    Export PPTX
+                                    Start Over
                                 </button>
-                            )}
+                                {currentStep === 'preview' && (
+                                    <button
+                                        onClick={handleExport}
+                                        className="bg-blue-600 text-white px-6 py-2 rounded-full font-medium hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm"
+                                    >
+                                        <Download size={18} />
+                                        Export PPTX
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
